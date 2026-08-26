@@ -27,6 +27,11 @@ as a service gets (two HTTP handlers + counters), and Go produces a single
 static binary with no runtime dependency layer. Deviate only with a stated
 reason.
 
+The one non-stdlib dependency is the SQLite driver, **`modernc.org/sqlite`**
+(pure Go). It is deliberately not `mattn/go-sqlite3`: that one needs cgo, which
+costs the `CGO_ENABLED=0` static binary and the distroless image above. Don't
+swap it back.
+
 ## Structure (two pieces, per ServiceBay's new-service-architecture assist)
 
 1. **App** — this repo's Go module: `POST /ingest`, the SQLite counter store
