@@ -64,7 +64,7 @@ func TestDBPathDefaultsToTheMountedVolume(t *testing.T) {
 
 func TestMuxRoutes(t *testing.T) {
 	store := newTestStore(t)
-	mux := newMux(store, sweptRetainer(t, store))
+	mux := newMux(store, sweptRetainer(t, store), testToken)
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -75,14 +75,17 @@ func TestMuxRoutes(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/ingest",
 		strings.NewReader(`{"app":"solaris","event":"widget.open","day":"2026-07-23","count":1}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/ingest = %d, want 200; body %s", rec.Code, rec.Body.String())
 	}
 
+	req = httptest.NewRequest(http.MethodGet, "/summary", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/summary", nil))
+	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/summary = %d, want 200; body %s", rec.Code, rec.Body.String())
 	}
@@ -91,6 +94,7 @@ func TestMuxRoutes(t *testing.T) {
 // The boot path: a service coming up on an existing database forgets what has
 // fallen out of the window before it serves anything.
 func TestNewServiceSweepsBeforeServing(t *testing.T) {
+	t.Setenv("USAGE_METRICS_TOKEN", testToken)
 	path := filepath.Join(t.TempDir(), "counters.db")
 	today := time.Now().UTC().Format(time.DateOnly)
 
@@ -126,6 +130,8 @@ func TestNewServiceSweepsBeforeServing(t *testing.T) {
 }
 
 func TestNewServiceRefusesToStartOnBadConfig(t *testing.T) {
+	t.Setenv("USAGE_METRICS_TOKEN", testToken)
+
 	t.Setenv("USAGE_METRICS_RETENTION_DAYS", "forever")
 	if _, _, err := newService(filepath.Join(t.TempDir(), "counters.db")); err == nil {
 		t.Fatal("expected a bad retention window to stop the service from starting")
