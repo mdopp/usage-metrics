@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/mdopp/usage-metrics/compare/usage-metrics-v0.2.0...usage-metrics-v0.2.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **ci:** publish the container image to ghcr so the template can install ([#11](https://github.com/mdopp/usage-metrics/issues/11)) ([0ecd417](https://github.com/mdopp/usage-metrics/commit/0ecd41703576dc91b13c13d1c363d3471c90b5e9))
+
 ## [0.2.0](https://github.com/mdopp/usage-metrics/compare/usage-metrics-v0.1.0...usage-metrics-v0.2.0) (2026-08-26)
 
 
