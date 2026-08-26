@@ -21,8 +21,8 @@ and retention policy.
   with the increment. No content, no uid, no request bodies.
 - **Retention**: counters older than the window (default 90 days, configurable)
   are deleted, not archived or rolled up. Fully deletable.
-- **Readout**: a minimal summary — counts per `app` × `event` over the last N
-  days. Enough to answer "is this used", not a BI tool.
+- **Readout**: `GET /summary` — counts per `app` × `event` over the last N days,
+  as JSON. Enough to answer "is this used", not a BI tool.
 - **Multi-app from day one**: the `app` dimension namespaces callers. A new
   caller just starts POSTing with its own `app` id.
 
@@ -67,6 +67,55 @@ verifiable by the caller:
 {"app": "solaris", "event": "widget.tasks.compose", "day": "2026-07-23", "total": 4}
 ```
 
+### `GET /summary`
+
+Counts per `app` × `event` over the last N days.
+
+`?days=N` — how many calendar days to cover, counting today as the first.
+Defaults to the retention window, so asked nothing it shows everything the box
+still holds. Must be an integer between 1 and 3650; anything else is a `400`.
+A non-GET gets `405`.
+
+```json
+{
+  "days": 5,
+  "from": "2026-07-19",
+  "total": 33,
+  "apps": [
+    {"app": "photos", "total": 16, "events": [
+      {"event": "album.view", "count": 12},
+      {"event": "upload.done", "count": 4}
+    ]},
+    {"app": "solaris", "total": 17, "events": [
+      {"event": "widget.open", "count": 10},
+      {"event": "widget.tasks.compose", "count": 7}
+    ]}
+  ],
+  "knownApps": ["photos", "recipes", "solaris"]
+}
+```
+
+`from` is the oldest day covered — **the same window retention uses**
+(`windowStart` in `window.go` is the one definition both call), so the readout
+covers exactly the days that still exist.
+
+`apps` lists only what was counted inside the window; an app with nothing this
+window is simply absent. `knownApps` lists every app the database still holds a
+counter for, whatever its day, which is what keeps an empty readout unambiguous:
+
+- `apps: []`, `knownApps: []` — nothing has ever reported.
+- `apps: []`, `knownApps: ["solaris"]` — solaris has reported before, just not
+  inside this window.
+
+Both are always JSON arrays, never `null`.
+
+It is a JSON endpoint and not an HTML page on purpose: the reader today is the
+operator, with `curl` or their own dashboard. A resident-facing page would have
+to be native ServiceBay UI (`service-ui-design-standard` — design tokens,
+mobile-first, user-language state text), which is a much bigger surface than the
+readout is currently worth. If a resident ever needs to read this, that page is
+the change to make then.
+
 ### `GET /healthz`
 
 `200 ok` — the ServiceBay install gate. `503` with a reason when the retention
@@ -103,8 +152,8 @@ not healthy, and ServiceBay's health check is what makes that visible.
 
 ## Status
 
-Early scaffold — ingest, storage and retention are in; see the repo's issues for
-the rest of the build-out plan.
+Early scaffold — ingest, storage, retention and the summary readout are in; see
+the repo's issues for the rest of the build-out plan.
 
 ## Origin
 

@@ -79,7 +79,7 @@ func equalDays(a, b []string) bool {
 	return true
 }
 
-func TestRetentionCutoffCountsTodayAsTheFirstDayOfTheWindow(t *testing.T) {
+func TestWindowStartCountsTodayAsTheFirstDayOfTheWindow(t *testing.T) {
 	cases := []struct {
 		name string
 		now  string
@@ -100,8 +100,8 @@ func TestRetentionCutoffCountsTodayAsTheFirstDayOfTheWindow(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse now: %v", err)
 			}
-			if got := retentionCutoff(now, tc.days); got != tc.want {
-				t.Fatalf("retentionCutoff(%s, %d) = %q, want %q", tc.now, tc.days, got, tc.want)
+			if got := windowStart(now, tc.days); got != tc.want {
+				t.Fatalf("windowStart(%s, %d) = %q, want %q", tc.now, tc.days, got, tc.want)
 			}
 		})
 	}

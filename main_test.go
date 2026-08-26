@@ -80,6 +80,12 @@ func TestMuxRoutes(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/ingest = %d, want 200; body %s", rec.Code, rec.Body.String())
 	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/summary", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/summary = %d, want 200; body %s", rec.Code, rec.Body.String())
+	}
 }
 
 // The boot path: a service coming up on an existing database forgets what has
