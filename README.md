@@ -19,7 +19,8 @@ and retention policy.
   client app (see Architecture below).
 - **Storage**: SQLite in WAL mode, counters keyed `(app, event, day)`, upserted
   with the increment. No content, no uid, no request bodies.
-- **Retention**: rollup/drop after ~90 days (configurable). Fully deletable.
+- **Retention**: counters older than the window (default 90 days, configurable)
+  are deleted, not archived or rolled up. Fully deletable.
 - **Readout**: a minimal summary — counts per `app` × `event` over the last N
   days. Enough to answer "is this used", not a BI tool.
 - **Multi-app from day one**: the `app` dimension namespaces callers. A new
@@ -68,20 +69,42 @@ verifiable by the caller:
 
 ### `GET /healthz`
 
-`200 ok` — the ServiceBay install gate.
+`200 ok` — the ServiceBay install gate. `503` with a reason when the retention
+sweep is failing or has stopped running (see Retention).
 
 ## Configuration
 
 | Env | Default | Meaning |
 | --- | --- | --- |
 | `USAGE_METRICS_DB_PATH` | `/data/usage-metrics.db` | SQLite file. Must live on the mounted volume (`{{DATA_DIR}}/usage-metrics/`), never the container fs, which is wiped on every pod recreate. |
+| `USAGE_METRICS_RETENTION_DAYS` | `90` | How many calendar days of counters to keep. Must be an integer >= 1; a malformed value stops the service from starting rather than falling back to the default. |
 
 The service listens on `:8080`.
 
+## Retention
+
+Counters live for **90 days by default**, configurable with
+`USAGE_METRICS_RETENTION_DAYS`.
+
+The window is a count of calendar days in **UTC, with today as the first day**:
+at `N = 90`, the oldest day kept is today minus 89, a row dated exactly on that
+day survives, and everything before it is deleted. Days ahead of today (a caller
+with a skewed clock) are left alone.
+
+Old counters are **deleted, not rolled up** — a rolled-up total is still a record
+of activity from a day we promised to forget. There is no soft-delete flag and no
+archive table: after a sweep the rows are gone from the database.
+
+The sweep runs once at boot, before the service accepts a write, and then every
+24 hours. It is a pure function of (today, window), so running it twice deletes
+nothing the second time. If a sweep fails, or the loop stops ticking, `/healthz`
+turns `503` — a service that keeps ingesting while it has stopped forgetting is
+not healthy, and ServiceBay's health check is what makes that visible.
+
 ## Status
 
-Early scaffold — ingest + storage are in; see the repo's issues for the rest of
-the build-out plan.
+Early scaffold — ingest, storage and retention are in; see the repo's issues for
+the rest of the build-out plan.
 
 ## Origin
 

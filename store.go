@@ -63,6 +63,17 @@ func (s *Store) Increment(app, event, day string, count int64) (int64, error) {
 	return total, nil
 }
 
+// DeleteBefore removes every counter dated before day (exclusive) and returns
+// how many rows were deleted. Days are stored as YYYY-MM-DD, so the string
+// comparison is a chronological one.
+func (s *Store) DeleteBefore(day string) (int64, error) {
+	result, err := s.db.Exec("DELETE FROM counters WHERE day < ?", day)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (s *Store) journalMode() (string, error) {
 	var mode string
 	err := s.db.QueryRow("PRAGMA journal_mode").Scan(&mode)

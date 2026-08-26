@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,16 +17,47 @@ const addr = ":8080"
 func main() {
 	path := dbPath()
 
-	store, err := OpenStore(path)
+	handler, stop, err := newService(path)
 	if err != nil {
-		log.Fatalf("open store at %s: %v", path, err)
-	}
-	defer store.Close()
-
-	log.Printf("usage-metrics listening on %s, counters at %s", addr, path)
-	if err := http.ListenAndServe(addr, newMux(store)); err != nil {
 		log.Fatal(err)
 	}
+	defer stop()
+
+	log.Printf("usage-metrics listening on %s, counters at %s", addr, path)
+	log.Fatal(http.ListenAndServe(addr, handler))
+}
+
+// newService opens the store, forgets whatever has fallen out of the retention
+// window, starts the sweep loop, and returns the routes plus a stop that unwinds
+// all of it.
+func newService(path string) (http.Handler, func(), error) {
+	days, err := retentionDays()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	store, err := OpenStore(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open store at %s: %w", path, err)
+	}
+
+	// Sweep before serving, so a box that was off for a month forgets what it
+	// owes before it takes another write.
+	retention := newRetainer(store, days)
+	if deleted, err := retention.sweep(); err != nil {
+		log.Printf("retention: initial sweep failed: %v", err)
+	} else {
+		log.Printf("retention: keeping %d days, dropped %d stale counter rows", days, deleted)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go retention.run(ctx, retentionInterval)
+
+	stop := func() {
+		cancel()
+		store.Close()
+	}
+	return newMux(store, retention), stop, nil
 }
 
 func dbPath() string {
@@ -34,14 +67,24 @@ func dbPath() string {
 	return defaultDBPath
 }
 
-func newMux(store *Store) *http.ServeMux {
+func newMux(store *Store, retention *retainer) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthz)
+	mux.Handle("/healthz", &healthHandler{retention: retention})
 	mux.Handle("/ingest", &ingestHandler{store: store})
 	return mux
 }
 
-func healthz(w http.ResponseWriter, r *http.Request) {
+type healthHandler struct {
+	retention *retainer
+}
+
+// A retention loop that has stopped is a broken privacy promise, so it turns the
+// health check ServiceBay watches red instead of going quiet.
+func (h *healthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := h.retention.health(2 * retentionInterval); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("ok"))
 }
