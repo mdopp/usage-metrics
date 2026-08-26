@@ -32,6 +32,11 @@ func main() {
 // window, starts the sweep loop, and returns the routes plus a stop that unwinds
 // all of it.
 func newService(path string) (http.Handler, func(), error) {
+	token, err := serviceToken()
+	if err != nil {
+		return nil, nil, err
+	}
+
 	days, err := retentionDays()
 	if err != nil {
 		return nil, nil, err
@@ -58,7 +63,7 @@ func newService(path string) (http.Handler, func(), error) {
 		cancel()
 		store.Close()
 	}
-	return newMux(store, retention), stop, nil
+	return newMux(store, retention, token), stop, nil
 }
 
 func dbPath() string {
@@ -68,11 +73,15 @@ func dbPath() string {
 	return defaultDBPath
 }
 
-func newMux(store *Store, retention *retainer) *http.ServeMux {
+func newMux(store *Store, retention *retainer, token string) *http.ServeMux {
 	mux := http.NewServeMux()
+	// /healthz is the one open route: ServiceBay polls it from the host and its
+	// probe cannot carry a header, and all it discloses is whether retention is
+	// still running. Both counter routes are gated — /summary reads household
+	// activity, which is exactly what the token exists to keep off the LAN.
 	mux.Handle("/healthz", &healthHandler{retention: retention})
-	mux.Handle("/ingest", &ingestHandler{store: store})
-	mux.Handle("/summary", &summaryHandler{store: store, defaultDays: retention.days, now: time.Now})
+	mux.Handle("/ingest", requireToken(token, &ingestHandler{store: store}))
+	mux.Handle("/summary", requireToken(token, &summaryHandler{store: store, defaultDays: retention.days, now: time.Now}))
 	return mux
 }
 

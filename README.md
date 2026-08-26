@@ -38,9 +38,25 @@ model (mdopp/solarisbay ADR 0010), an app talks only to its own backend (e.g.
 the Solaris Engine); that backend forwards aggregate increments here. First
 consumer: Solaris forwards widget `src=widget.*` hits (mdopp/solarisbay#1026).
 
-Deployed as a ServiceBay-managed Quadlet service — see `templates/usage-metrics/`.
+Deployed as a ServiceBay-managed Quadlet service — see `templates/usage-metrics/`:
+isolated netns with an explicit `hostPort` (ADR 0007), the counter database on a
+`{{DATA_DIR}}/usage-metrics` bind mount, and the token injected from a
+`type: "secret"` template variable.
 
 ## API
+
+Every counter endpoint (`/ingest`, `/summary`) requires the service token:
+
+```
+Authorization: Bearer <USAGE_METRICS_TOKEN>
+```
+
+Anything else — no header, the wrong token, another scheme — is a `401` with a
+`WWW-Authenticate: Bearer` challenge. There is deliberately **no SSO** here: the
+callers are other services' backends, not residents with a browser session, so
+per ServiceBay ADR 0009 the credential is a scoped service token. The service
+refuses to start when `USAGE_METRICS_TOKEN` is unset rather than serve those
+routes open. `/healthz` is the one open route (see below).
 
 ### `POST /ingest`
 
@@ -121,12 +137,17 @@ the change to make then.
 `200 ok` — the ServiceBay install gate. `503` with a reason when the retention
 sweep is failing or has stopped running (see Retention).
 
+Unauthenticated on purpose: ServiceBay polls it from the host and its probe
+cannot attach a header, and the endpoint discloses only whether the sweep is
+still running — no counters, no app names.
+
 ## Configuration
 
 | Env | Default | Meaning |
 | --- | --- | --- |
 | `USAGE_METRICS_DB_PATH` | `/data/usage-metrics.db` | SQLite file. Must live on the mounted volume (`{{DATA_DIR}}/usage-metrics/`), never the container fs, which is wiped on every pod recreate. |
 | `USAGE_METRICS_RETENTION_DAYS` | `90` | How many calendar days of counters to keep. Must be an integer >= 1; a malformed value stops the service from starting rather than falling back to the default. |
+| `USAGE_METRICS_TOKEN` | — (required) | Service token for `/ingest` + `/summary`. Generated per install by the ServiceBay wizard (`type: "secret"`), never baked into the image. Unset means the service does not start. |
 
 The service listens on `:8080`.
 
@@ -152,8 +173,10 @@ not healthy, and ServiceBay's health check is what makes that visible.
 
 ## Status
 
-Early scaffold — ingest, storage, retention and the summary readout are in; see
-the repo's issues for the rest of the build-out plan.
+Early scaffold — ingest, storage, retention, the summary readout and the
+ServiceBay template are in. The image is not published to a registry yet, so no
+real install has been done; see the repo's issues for the rest of the build-out
+plan.
 
 ## Origin
 

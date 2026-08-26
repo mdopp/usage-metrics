@@ -1,0 +1,17 @@
+{
+  "USAGE_METRICS_PORT": {
+    "type": "text",
+    "description": "Host port the counter API is published on. Callers on the box reach it as http://host.containers.internal:<port>; the host firewall refuses it on physical interfaces, so it is never reachable from the LAN or the internet.",
+    "default": "8095",
+    "blockLanAccess": true
+  },
+  "USAGE_METRICS_TOKEN": {
+    "type": "secret",
+    "description": "Service token for POST /ingest and GET /summary. Generated at deploy time and surfaced in the SAVE-THESE-NOW banner — configure the calling backend (e.g. Solaris) with it as `Authorization: Bearer <token>`. There is no SSO on these endpoints: the callers are services, not residents."
+  },
+  "USAGE_METRICS_RETENTION_DAYS": {
+    "type": "text",
+    "description": "How many calendar days of counters to keep. Older rows are deleted, not rolled up. Must be an integer >= 1; a malformed value stops the service from starting rather than quietly widening the window.",
+    "default": "90"
+  }
+}

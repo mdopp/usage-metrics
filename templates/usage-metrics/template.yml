@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: usage-metrics
+  labels:
+    app: usage-metrics
+  annotations:
+    servicebay.label: "Usage Metrics"
+    servicebay.schema-version: "1"
+    servicebay.ports: "{{USAGE_METRICS_PORT}}/tcp"
+    # Continuous health probe (#628). /healthz is 200 while the retention
+    # sweep is running and 503 with a reason when it has failed or gone
+    # quiet — a service that keeps counting while it has stopped forgetting
+    # is a broken privacy promise, not a healthy pod. It is the one route
+    # that is NOT token-gated: the poller runs on the host and its probe
+    # cannot carry an Authorization header, and all the endpoint discloses
+    # is whether the sweep is alive.
+    servicebay.healthcheck: |
+      url: http://localhost:{{USAGE_METRICS_PORT}}/healthz
+      interval: 30s
+      timeout: 5s
+      startup_timeout: 2m
+spec:
+  # ADR 0007: isolated netns (no hostNetwork) with the published port
+  # declared as an explicit hostPort. Nothing here needs the host's
+  # namespace — the service talks to no other service, it is talked TO by
+  # other services' backends, which reach it from their own isolated pods
+  # via `host.containers.internal:{{USAGE_METRICS_PORT}}`.
+  #
+  # That is also why the port is NOT bound to 127.0.0.1: pasta maps
+  # `host.containers.internal` to the host's LAN address, so a loopback
+  # bind would be unreachable for exactly the callers this service exists
+  # for. ADR 0007 Decision 3 names the pairing for that case — bind wider,
+  # and close the port on physical interfaces at the host firewall via
+  # `blockLanAccess` on USAGE_METRICS_PORT (variables.json).
+  containers:
+  - name: usage-metrics
+    image: ghcr.io/mdopp/usage-metrics:latest
+    # The image is distroless:nonroot (uid 65532), whose subuid mapping does
+    # not own the bind mount below, so SQLite could not create its database
+    # there. Container uid 0 maps to the rootless user that owns
+    # {{DATA_DIR}}, which is the house pattern for a hostPath mount
+    # (cf. file-share, beets).
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
+    env:
+    # Must stay inside the mounted volume: the container filesystem is wiped
+    # on every pod recreate, and counters have to survive a redeploy.
+    - name: USAGE_METRICS_DB_PATH
+      value: /data/usage-metrics.db
+    - name: USAGE_METRICS_RETENTION_DAYS
+      value: "{{USAGE_METRICS_RETENTION_DAYS}}"
+    # ADR 0009: the callers are other services' backends, not residents, so
+    # the credential is a scoped service token rather than Authelia SSO.
+    # Generated per install by the wizard (type: "secret") — never a literal
+    # in this repo or the image.
+    - name: USAGE_METRICS_TOKEN
+      value: "{{USAGE_METRICS_TOKEN}}"
+    ports:
+    # The app listens on a fixed :8080 inside the pod netns; the operator
+    # only chooses which host port it is published on.
+    - containerPort: 8080
+      hostPort: {{USAGE_METRICS_PORT}}
+    volumeMounts:
+    - mountPath: /data
+      name: usage-metrics-data
+  volumes:
+  # The database is the whole state of this service, and this template ships
+  # no *.mustache companion files, so a deploy writes nothing into this
+  # directory — a redeploy cannot overwrite the counters it finds there
+  # (ADR 0004, #2590).
+  - name: usage-metrics-data
+    hostPath:
+      path: {{DATA_DIR}}/usage-metrics
+      type: DirectoryOrCreate
