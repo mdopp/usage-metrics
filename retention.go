@@ -53,18 +53,11 @@ func retentionDays() (int, error) {
 	return days, nil
 }
 
-// retentionCutoff is the oldest day the window keeps: the window holds the last
-// `days` calendar days in UTC, counting today as the first. A row dated exactly
-// on the cutoff survives; the day before it is dropped.
-func retentionCutoff(now time.Time, days int) string {
-	return now.UTC().AddDate(0, 0, -(days - 1)).Format(time.DateOnly)
-}
-
 // sweep deletes everything older than the window and returns how many rows went.
 // It is a pure function of (today, days), so running it twice in a row deletes
 // nothing the second time.
 func (r *retainer) sweep() (int64, error) {
-	deleted, err := r.store.DeleteBefore(retentionCutoff(r.now(), r.days))
+	deleted, err := r.store.DeleteBefore(windowStart(r.now(), r.days))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()

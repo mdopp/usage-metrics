@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 // defaultDBPath sits under the mounted volume the template provides, not the
@@ -71,6 +72,7 @@ func newMux(store *Store, retention *retainer) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle("/healthz", &healthHandler{retention: retention})
 	mux.Handle("/ingest", &ingestHandler{store: store})
+	mux.Handle("/summary", &summaryHandler{store: store, defaultDays: retention.days, now: time.Now})
 	return mux
 }
 
