@@ -157,7 +157,7 @@ func TestMissRejectsEverythingButASentenceSourceAndDay(t *testing.T) {
 		"a newline":         missBody("bote", "Wann kommt\nder Müll?", "2026-10-16"),
 		"a tab":             missBody("bote", "Wann\tkommt der Müll?", "2026-10-16"),
 		"a DEL":             missBody("bote", "Wann kommt der Müll?\u007f", "2026-10-16"),
-		"a C1 control":      missBody("bote", "Wann kommt der Müll?\u0085", "2026-10-16"),
+		"a C1 control":      missBody("bote", "Wann kommt\u0085der Müll?", "2026-10-16"),
 		"invalid UTF-8":     `{"source":"bote","text":"Wann ` + "\xff" + `","day":"2026-10-16"}`,
 		"no source":         `{"text":"Wann kommt der Müll?","day":"2026-10-16"}`,
 		"upper-case source": missBody("Bote", "Wann kommt der Müll?", "2026-10-16"),
@@ -414,5 +414,29 @@ func TestMissRoutesNeedTheToken(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"text":"Satz"`) {
 		t.Fatalf("GET /misses with token = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// The cap's check and write are one statement: writers racing for the last
+// free place cannot overshoot it.
+func TestMissCapHoldsUnderConcurrentWriters(t *testing.T) {
+	store, post, _, _ := missHandlers(t)
+	for i := 0; i < maxMissesPerDay-1; i++ {
+		if _, err := store.AddMiss("bote", fmt.Sprintf("Satz %d", i), "2026-10-16", maxMissesPerDay); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	codes := make(chan int, 20)
+	for i := 0; i < cap(codes); i++ {
+		go func(i int) { codes <- postMiss(t, post, missBody("bote", fmt.Sprintf("neu %d", i), "2026-10-16")).Code }(i)
+	}
+	ok := 0
+	for i := 0; i < cap(codes); i++ {
+		if <-codes == http.StatusOK {
+			ok++
+		}
+	}
+	if ok != 1 || missRows(t, store) != maxMissesPerDay {
+		t.Fatalf("%d writers got the last place, %d rows stored; want 1 and %d", ok, missRows(t, store), maxMissesPerDay)
 	}
 }

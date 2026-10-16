@@ -53,17 +53,19 @@ func retentionDays() (int, error) {
 	return days, nil
 }
 
-// sweep deletes everything older than the window and returns how many rows went.
+// sweep deletes the counters older than the window and the unanswered sentences
+// older than missRetentionDays, and returns how many rows went.
 // It is a pure function of (today, days), so running it twice in a row deletes
 // nothing the second time.
 func (r *retainer) sweep() (int64, error) {
-	deleted, err := r.store.DeleteBefore(windowStart(r.now(), r.days))
+	now := r.now()
+	deleted, err := r.store.DeleteBefore(windowStart(now, r.days), windowStart(now, missRetentionDays))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lastErr = err
 	if err == nil {
-		r.lastSweep = r.now()
+		r.lastSweep = now
 	}
 	return deleted, err
 }
@@ -82,7 +84,7 @@ func (r *retainer) run(ctx context.Context, interval time.Duration) {
 			if deleted, err := r.sweep(); err != nil {
 				log.Printf("retention: sweep failed: %v", err)
 			} else if deleted > 0 {
-				log.Printf("retention: dropped %d counter rows older than %d days", deleted, r.days)
+				log.Printf("retention: dropped %d rows (counters older than %d days, sentences older than %d)", deleted, r.days, missRetentionDays)
 			}
 		}
 	}
