@@ -96,7 +96,7 @@ jobs:
       # Boot the image before it can become :latest. A distroless binary that
       # fails to start would otherwise only surface as a failed install on the
       # box, hours later.
-      - name: Smoke-test the image (boots and answers /healthz)
+      - name: Smoke-test the image (boots, answers /healthz, round-trips a miss)
         run: |
           set -euo pipefail
           docker run -d --name smoke -p 18080:8080 \
@@ -108,9 +108,19 @@ jobs:
             if curl -fsS http://127.0.0.1:18080/healthz >/dev/null; then ok=1; break; fi
             sleep 1
           done
+          [ -n "$ok" ] || { docker logs smoke; exit 1; }
+          # An unanswered sentence round-trips through the booted image: stored
+          # with the token, read back by /misses, and refused without it.
+          auth='Authorization: Bearer smoke-token'
+          day=$(date -u +%F)
+          curl -fsS -H "$auth" -H 'Content-Type: application/json' \
+            -d "{\"source\":\"smoke\",\"text\":\"Wann kommt der Müll?\",\"day\":\"$day\"}" \
+            http://127.0.0.1:18080/miss
+          curl -fsS -H "$auth" http://127.0.0.1:18080/misses | tee /tmp/misses.json
+          jq -e '.misses == [{"source":"smoke","text":"Wann kommt der Müll?","count":1,"lastDay":"'"$day"'"}]' /tmp/misses.json
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/misses)" = 401 ]
           docker logs smoke
           docker rm -f smoke >/dev/null
-          [ -n "$ok" ]
 
       # Cache-only re-export of the layers built above, so this is a push, not
       # a second compile.

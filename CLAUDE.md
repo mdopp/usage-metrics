@@ -11,9 +11,15 @@ It runs **on ServiceBay**. These rules apply to every session, human or agent.
 - **Is:** one small container. `POST /ingest` for aggregate increments keyed
   `(app, event, day)`, SQLite storage, a retention rollup, a minimal summary
   readout. Multi-app from day one via the `app` dimension.
+- **Also is** (owner decision 2026-10-16, #13): the store for the sentences
+  the Bote or the voice control could not answer — `POST /miss`, `GET /misses`.
+  The wording, the source and the day only, **without names** (the caller
+  strips the speaker; nothing about who is ever accepted), at most 280
+  characters, 200 different per source and day, deleted after a fixed 30
+  days. It is the one kind of free text here; don't add another.
 - **Isn't:** a BI tool, a Prometheus/Grafana stack, per-user analytics, or a
-  third-party pipeline. No content, no uid, no request bodies are ever stored —
-  counters only.
+  third-party pipeline. No uid, no device, no IP, no request bodies are ever
+  stored; besides the unanswered sentences, counters only.
 - **Isn't reachable directly by client apps.** Per the Solaris-Hub BFF model
   (solarisbay ADR 0010), apps talk only to their own backend (e.g. Solaris);
   that backend forwards aggregate increments here. `/ingest` is LAN/token
@@ -35,7 +41,8 @@ swap it back.
 ## Structure (two pieces, per ServiceBay's new-service-architecture assist)
 
 1. **App** — this repo's Go module: `POST /ingest`, the SQLite counter store
-   (WAL mode), the retention rollup, a summary readout endpoint, `/healthz`.
+   (WAL mode), the retention rollup, a summary readout endpoint, the
+   unanswered sentences (`POST /miss`, `GET /misses`), `/healthz`.
    `Dockerfile` builds a lean multi-stage static binary image.
 2. **Template** — `templates/usage-metrics/` — the ServiceBay Quadlet template
    that deploys the image: ports, mounts (`{{DATA_DIR}}/usage-metrics/`), health
@@ -74,7 +81,8 @@ non-trivial work, don't re-derive:
 
 - First-party only — data never leaves the box, no third-party analytics.
 - Aggregate + anonymous — counters, no per-user attribution, no content, no
-  request bodies persisted.
+  request bodies persisted. The one exception is the unanswered sentence:
+  its wording only, never who said it, 30 days.
 - Short retention (default ~90 days, configurable), and the data must be
   fully deletable.
 

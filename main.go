@@ -53,7 +53,7 @@ func newService(path string) (http.Handler, func(), error) {
 	if deleted, err := retention.sweep(); err != nil {
 		log.Printf("retention: initial sweep failed: %v", err)
 	} else {
-		log.Printf("retention: keeping %d days, dropped %d stale counter rows", days, deleted)
+		log.Printf("retention: keeping %d days, dropped %d stale rows (sentences after %d days)", days, deleted, missRetentionDays)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -82,6 +82,9 @@ func newMux(store *Store, retention *retainer, token string) *http.ServeMux {
 	mux.Handle("/healthz", &healthHandler{retention: retention})
 	mux.Handle("/ingest", requireToken(token, &ingestHandler{store: store}))
 	mux.Handle("/summary", requireToken(token, &summaryHandler{store: store, defaultDays: retention.days, now: time.Now}))
+	// The unanswered sentences are what the family said: gated like the counters.
+	mux.Handle("/miss", requireToken(token, &missHandler{store: store, now: time.Now}))
+	mux.Handle("/misses", requireToken(token, &missesHandler{store: store, now: time.Now}))
 	return mux
 }
 
