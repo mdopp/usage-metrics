@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/mdopp/usage-metrics/compare/usage-metrics-v0.2.1...usage-metrics-v0.3.0) (2026-10-17)
+
+
+### Features
+
+* **misses:** keep the sentences the Bote and the voice could not answer, 30 days, never who ([5da1d45](https://github.com/mdopp/usage-metrics/commit/5da1d453e2027ce8604ca4112fa0e967c570a385))
+* **misses:** keep the sentences the Bote and the voice could not answer, 30 days, never who ([#13](https://github.com/mdopp/usage-metrics/issues/13)) ([aa09c33](https://github.com/mdopp/usage-metrics/commit/aa09c338b1cdeef9a51332c9ca07705a5de412bf))
+
 ## [0.2.1](https://github.com/mdopp/usage-metrics/compare/usage-metrics-v0.2.0...usage-metrics-v0.2.1) (2026-08-26)
 
 
